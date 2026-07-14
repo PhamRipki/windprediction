@@ -1,3 +1,0 @@
-[project]
-name = "windprediction"
-requires-python = ">=3.9,<3.12"

@@ -91,7 +91,8 @@ tab1, tab2 = st.tabs(["🚀 Prediksi Instan", "🔄 Perbarui (Regenerate) Model"
 # --- TAB 1: PREDIKSI INSTAN ---
 with tab1:
     if sarima_fit is None:
-        st.warning("⚠️ Model belum ditanam atau tidak ditemukan. Silakan ke tab 'Perbarui Model' untuk melakukan Inisialisasi awal.")
+        st.warning("⚠️ Model belum ditanam atau tidak ditemukan.")
+        st.info("📝 **Cara Menggunakan Aplikasi:**\n\n1. Pergi ke tab **'Perbarui (Regenerate) Model'**\n2. Upload file CSV dataset wind energy Anda\n3. Klik 'Mulai Regenerasi Model'\n4. Tunggu proses training selesai (~2-3 menit)\n5. Kembali ke tab ini untuk melakukan prediksi!")
     else:
         st.sidebar.header("Konfigurasi Prediksi")
         steps_forecast = st.sidebar.number_input("Langkah Prediksi (Jam ke depan):", min_value=1, max_value=168, value=24)
@@ -150,34 +151,74 @@ with tab1:
 
 # --- TAB 2: REGENERATE MODEL ---
 with tab2:
-    st.subheader("Unggah Dataset Baru untuk Memperbarui Model")
+    st.subheader("📤 Upload Dataset untuk Training Model")
     st.markdown("""
-    Gunakan fitur ini jika ada **data periode terbaru** (dataset baru).  
-    Sistem akan otomatis melatih ulang (*Retrain*) model dengan data tersebut lalu menanam (menyimpan) ulang model barunya agar sistem tetap *up-to-date*.
+    **Cara Menggunakan:**
+    1. Upload file CSV yang berisi kolom **'Production'** (data produksi wind energy)
+    2. Dataset harus memiliki kolom **'Date'** dan **'Start_Hour'** atau **'DateTime'**
+    3. Klik tombol 'Mulai Training Model'
+    4. Tunggu proses selesai (~2-3 menit)
+    5. Model akan tersimpan dan siap digunakan untuk prediksi!
+    
+    **Contoh Format CSV:**
+    ```
+    Date,Start_Hour,Production
+    2024-01-01,0,145.5
+    2024-01-01,1,142.3
+    ...
+    ```
     """)
     
-    uploaded_file = st.file_uploader("Upload File CSV Dataset Baru:", type=['csv'])
+    uploaded_file = st.file_uploader("📁 Pilih File CSV:", type=['csv'])
     
     if uploaded_file is not None:
-        if st.button("Mulai Regenerasi Model", type="primary"):
-            st.info("Mohon tunggu, proses regenerasi (pelatihan ulang SARIMA & LSTM) membutuhkan waktu beberapa menit...")
+        # Preview data
+        try:
+            df_preview = pd.read_csv(uploaded_file)
+            st.success(f"✅ File berhasil dibaca! Total {len(df_preview)} baris data.")
             
-            # Simpan file upload ke temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
-                tmp.write(uploaded_file.getvalue())
-                tmp_path = tmp.name
-                
-            try:
-                # Panggil fungsi training dari file eksternal (yang menyembunyikan logika epoch/lag)
-                train_and_save_models(tmp_path, MODEL_DIR)
-                
-                # Tambahkan ke history
-                add_history(uploaded_file.name)
-                
-                st.success("🎉 Regenerasi berhasil! Model terbaru telah ditanam. Anda perlu membersihkan (clear cache) atau muat ulang aplikasi untuk menggunakan model terbaru ini.")
-                # Clear cache Streamlit
-                st.cache_resource.clear()
-            except Exception as e:
-                st.error(f"Terjadi kesalahan saat melatih model: {e}")
-            finally:
-                os.remove(tmp_path)
+            with st.expander("👀 Preview Data (10 baris pertama)"):
+                st.dataframe(df_preview.head(10))
+            
+            # Reset file pointer
+            uploaded_file.seek(0)
+        except Exception as e:
+            st.error(f"❌ Error membaca file: {e}")
+            uploaded_file = None
+    
+    if uploaded_file is not None:
+        if st.button("🚀 Mulai Training Model", type="primary"):
+            with st.spinner("⏳ Sedang training model SARIMA... Mohon tunggu 2-3 menit..."):
+                # Simpan file upload ke temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
+                    tmp.write(uploaded_file.getvalue())
+                    tmp_path = tmp.name
+                    
+                try:
+                    # Panggil fungsi training
+                    train_and_save_models(tmp_path, MODEL_DIR)
+                    
+                    # Tambahkan ke history
+                    add_history(uploaded_file.name)
+                    
+                    st.success("🎉 **Training berhasil!** Model SARIMA telah tersimpan.")
+                    st.info("💡 Silakan refresh halaman atau clear cache Streamlit (tekan 'C' di keyboard) lalu kembali ke tab 'Prediksi Instan' untuk menggunakan model baru.")
+                    
+                    # Clear cache agar model baru di-load
+                    st.cache_resource.clear()
+                    
+                    # Suggest rerun
+                    if st.button("🔄 Refresh Aplikasi"):
+                        st.rerun()
+                        
+                except Exception as e:
+                    st.error(f"❌ Terjadi kesalahan saat training model: {e}")
+                    import traceback
+                    with st.expander("🔍 Detail Error (untuk debugging)"):
+                        st.code(traceback.format_exc())
+                finally:
+                    # Hapus temporary file
+                    try:
+                        os.remove(tmp_path)
+                    except:
+                        pass
