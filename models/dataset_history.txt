@@ -1,0 +1,1 @@
+Wind_Energy_Production_Cleaned.csv (Data Awal)
