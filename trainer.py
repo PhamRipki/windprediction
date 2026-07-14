@@ -3,13 +3,10 @@ import numpy as np
 import pandas as pd
 import joblib
 from statsmodels.tsa.statespace.sarimax import SARIMAX
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
 
 def train_and_save_models(csv_path, output_dir="models"):
     """
-    Melatih model SARIMA dan LSTM dari file CSV lalu menyimpan modelnya 
+    Melatih model SARIMA dari file CSV lalu menyimpan modelnya 
     ke dalam direktori output_dir agar bisa 'ditanam' di Streamlit.
     """
     print(f"Membaca dataset dari {csv_path}...")
@@ -45,56 +42,13 @@ def train_and_save_models(csv_path, output_dir="models"):
     
     # Simpan model SARIMA
     sarima_path = os.path.join(output_dir, "sarima_model.pkl")
-    # statsmodels punya method save, atau pakai joblib
     sarima_fit.save(sarima_path)
     print(f"Model SARIMA berhasil disimpan di {sarima_path}")
     
-    # Ekstraksi Residual untuk LSTM
+    # Ekstraksi Residual untuk context
     residuals = sarima_fit.resid
     
-    # ==========================
-    # 3. Persiapan Data LSTM
-    # ==========================
-    print("Mempersiapkan data residual untuk LSTM...")
-    scaler = MinMaxScaler(feature_range=(0,1))
-    scaled_data = scaler.fit_transform(residuals.reshape(-1, 1))
-    
-    # Simpan Scaler (agar bisa dipakai untuk inverse_transform nanti)
-    scaler_path = os.path.join(output_dir, "scaler.pkl")
-    joblib.dump(scaler, scaler_path)
-    
-    # Parameter fix (di-hardcode sesuai instruksi dosen)
-    n_lags = 72
-    epochs = 50
-    
-    X, y = [], []
-    for i in range(n_lags, len(scaled_data)):
-        X.append(scaled_data[i-n_lags:i, 0])
-        y.append(scaled_data[i, 0])
-    X, y = np.array(X), np.array(y)
-    X = np.reshape(X, (X.shape[0], X.shape[1], 1))
-    
-    # ==========================
-    # 4. Latih Model LSTM
-    # ==========================
-    print(f"Melatih Model LSTM (Lags={n_lags}, Epochs={epochs})...")
-    lstm_model = Sequential()
-    lstm_model.add(LSTM(units=50, return_sequences=True, input_shape=(X.shape[1], 1)))
-    lstm_model.add(Dropout(0.2))
-    lstm_model.add(LSTM(units=50))
-    lstm_model.add(Dropout(0.2))
-    lstm_model.add(Dense(1))
-    lstm_model.compile(optimizer='adam', loss='mean_squared_error')
-    
-    lstm_model.fit(X, y, epochs=epochs, batch_size=32, verbose=1)
-    
-    # Simpan model LSTM
-    lstm_path = os.path.join(output_dir, "lstm_model.keras")
-    lstm_model.save(lstm_path)
-    print(f"Model LSTM berhasil disimpan di {lstm_path}")
-    
-    # Simpan data terakhir (dibutuhkan sebagai context sliding window untuk prediksi selanjutnya)
-    # Kita butuh residual lag terakhir dan ts_data asli
+    # Simpan data terakhir (dibutuhkan sebagai context untuk prediksi selanjutnya)
     context = {
         'last_ts_data': ts_data.tolist(),
         'last_residuals': residuals.tolist()
